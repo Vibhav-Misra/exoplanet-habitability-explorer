@@ -1,4 +1,4 @@
-# Exoplanet Habitability Explorer 🌎✨
+# Exoplanet Habitability Explorer
 
 An interactive data-science project that ranks and visualizes exoplanets
 based on simple, explainable habitability criteria using NASA’s Exoplanet Archive.
