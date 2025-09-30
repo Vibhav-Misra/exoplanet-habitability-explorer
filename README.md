@@ -33,7 +33,7 @@ and machine-learning classification in a single, deployable web app.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 - **Python**: `pandas`, `numpy`, `requests`, `pyarrow`
 - **Data science / ML**: `scikit-learn`, `joblib`
 - **Web app / viz**: `Streamlit`, `Plotly`, `streamlit-plotly-events`
@@ -45,8 +45,8 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-### 2. Pull latest data
-python src/fetch_data.py  
+# 2. Pull latest data
+python src/fetch_data.py          # use --limit 500 for quick dev
 
 ### 3. (optional) Train / update ML model
 python src/train_classifier.py
