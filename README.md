@@ -7,8 +7,6 @@ thousands of confirmed exoplanets using data from the
 The project demonstrates data sourcing, feature engineering, interactive visualization,
 and machine-learning classification in a single, deployable web app.
 
----
-
 ## Features
 - **Live NASA data pull** – fetches the latest PSCompPars catalog from the
   NASA Exoplanet Archive via its TAP API (`src/fetch_data.py`)
@@ -31,16 +29,13 @@ and machine-learning classification in a single, deployable web app.
 - **Clean architecture & reproducibility** – separate training script, 
   model artifacts in `/models`, Streamlit app in `/app.py`
 
----
-
 ## Tech Stack
 - **Python**: `pandas`, `numpy`, `requests`, `pyarrow`
 - **Data science / ML**: `scikit-learn`, `joblib`
 - **Web app / viz**: `Streamlit`, `Plotly`, `streamlit-plotly-events`
 - **Data source**: [NASA Exoplanet Archive TAP API](https://exoplanetarchive.ipac.caltech.edu)  
 
-## Typical Workflow
-### 1. Create env & install deps
+## Workflow
 ### 1. Create env & install deps
 python3 -m venv venv
 source venv/bin/activate
@@ -50,9 +45,7 @@ pip install -r requirements.txt
 python src/fetch_data.py  
 
 ### 3. (optional) Train / update ML model
-### 3. (optional) Train / update ML model
 python src/train_classifier.py
 
-### 4. Run interactive app locally
 ### 4. Run interactive app locally
 streamlit run app.py
