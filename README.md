@@ -46,7 +46,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 ### 2. Pull latest data
-python src/fetch_data.py          # use --limit 500 for quick dev
+python src/fetch_data.py  
 
 ### 3. (optional) Train / update ML model
 python src/train_classifier.py
