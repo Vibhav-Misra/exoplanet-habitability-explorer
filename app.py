@@ -10,53 +10,30 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# Build inference features with the exact column names used in training
 def build_model_features(view_df: pd.DataFrame, full_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    view_df: the filtered/renamed dataframe you're plotting (called 'scored' later)
-    full_df: the full dataframe from load_data(...) BEFORE you rename columns away
-    Returns a DataFrame with the columns the RF pipeline expects.
-    """
-
-    # Merge in any columns that aren't already in view_df
-    # We key on 'name' (you renamed pl_name -> name in load_data)
     cols_to_pull = ["name", "st_rad", "st_mass", "orbital_period_d", "star_teff_K", "discoverymethod"]
     base = view_df.merge(full_df[cols_to_pull], on="name", how="left")
 
-    # Reconstruct the training feature names (NO leakage columns!)
     feat = pd.DataFrame(index=base.index)
 
-    # 1) Raw numeric features expected by the pipeline
-    feat["pl_eqt"]     = base.get("eq_temp_K")          # equilibrium temperature (K)
-    feat["st_teff"]    = base.get("star_teff_K")        # stellar Teff (K)
-    feat["st_rad"]     = base.get("st_rad")             # stellar radius (Solar)
-    feat["st_mass"]    = base.get("st_mass")            # stellar mass (Solar)
-    feat["sy_dist"]    = base.get("distance_pc")        # distance (pc)
-    feat["pl_orbper"]  = base.get("orbital_period_d")   # period (days)
-
-    # 2) Categorical feature
+    feat["pl_eqt"]     = base.get("eq_temp_K") 
+    feat["st_teff"]    = base.get("star_teff_K")
+    feat["st_rad"]     = base.get("st_rad")     
+    feat["st_mass"]    = base.get("st_mass")    
+    feat["sy_dist"]    = base.get("distance_pc")
+    feat["pl_orbper"]  = base.get("orbital_period_d")
     feat["discoverymethod"] = base.get("discoverymethod")
-
-    # 3) Engineered features (if you trained with them)
-    # Luminosity ~ R^2 * (T/5772)^4
     feat["lum_rel"] = (feat["st_rad"] ** 2) * ((feat["st_teff"] / 5772.0) ** 4)
-
-    # Semi-major axis (AU); a ≈ ((P_years^2) * M_star)^(1/3)
     P_years = feat["pl_orbper"] / 365.25
     feat["a_AU"] = ((P_years ** 2) * feat["st_mass"]) ** (1/3)
-
-    # Estimated insolation
     feat["insol_est"] = feat["lum_rel"] / (feat["a_AU"] ** 2)
 
-    # Return only the columns your model was trained with.
-    # If you trained WITHOUT engineered features, drop those three here.
     model_cols = [
         "pl_eqt", "st_teff", "st_rad", "st_mass", "sy_dist", "pl_orbper",
-        "lum_rel", "a_AU", "insol_est",           # <-- remove these 3 if not used in training
+        "lum_rel", "a_AU", "insol_est", 
         "discoverymethod",
     ]
     return feat[model_cols]
-
 
 PRESET_WEIGHTS = {
     "Conservative HZ": {
@@ -127,11 +104,8 @@ metrics = load_metrics()
 
 def get_feature_importances(model):
     try:
-        # After ColumnTransformer+OHE, names are expanded; dump rough importances
         import numpy as np
         rf = model.named_steps["clf"]
-        # No straightforward way to map back to column names cleanly without tracking OHE categories.
-        # Show top-k numeric placeholder instead:
         return rf.feature_importances_
     except Exception:
         return None
@@ -233,7 +207,7 @@ scored = compute_scores(fdf.rename(columns={
 
 if use_ml and model is not None:
     try:
-        feat = build_model_features(scored, df)  # df is the full dataset from load_data(...)
+        feat = build_model_features(scored, df) 
         proba = model.predict_proba(feat)[:, 1]
         scored["ml_prob"] = proba
         scored["ml_label"] = (scored["ml_prob"] >= ml_threshold).astype(int)
