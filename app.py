@@ -1,11 +1,62 @@
 import json
-from pathlib import Path
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
+import joblib
 from src.scoring import compute_scores, DEFAULT_WEIGHTS
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+# Build inference features with the exact column names used in training
+def build_model_features(view_df: pd.DataFrame, full_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    view_df: the filtered/renamed dataframe you're plotting (called 'scored' later)
+    full_df: the full dataframe from load_data(...) BEFORE you rename columns away
+    Returns a DataFrame with the columns the RF pipeline expects.
+    """
+
+    # Merge in any columns that aren't already in view_df
+    # We key on 'name' (you renamed pl_name -> name in load_data)
+    cols_to_pull = ["name", "st_rad", "st_mass", "orbital_period_d", "star_teff_K", "discoverymethod"]
+    base = view_df.merge(full_df[cols_to_pull], on="name", how="left")
+
+    # Reconstruct the training feature names (NO leakage columns!)
+    feat = pd.DataFrame(index=base.index)
+
+    # 1) Raw numeric features expected by the pipeline
+    feat["pl_eqt"]     = base.get("eq_temp_K")          # equilibrium temperature (K)
+    feat["st_teff"]    = base.get("star_teff_K")        # stellar Teff (K)
+    feat["st_rad"]     = base.get("st_rad")             # stellar radius (Solar)
+    feat["st_mass"]    = base.get("st_mass")            # stellar mass (Solar)
+    feat["sy_dist"]    = base.get("distance_pc")        # distance (pc)
+    feat["pl_orbper"]  = base.get("orbital_period_d")   # period (days)
+
+    # 2) Categorical feature
+    feat["discoverymethod"] = base.get("discoverymethod")
+
+    # 3) Engineered features (if you trained with them)
+    # Luminosity ~ R^2 * (T/5772)^4
+    feat["lum_rel"] = (feat["st_rad"] ** 2) * ((feat["st_teff"] / 5772.0) ** 4)
+
+    # Semi-major axis (AU); a ≈ ((P_years^2) * M_star)^(1/3)
+    P_years = feat["pl_orbper"] / 365.25
+    feat["a_AU"] = ((P_years ** 2) * feat["st_mass"]) ** (1/3)
+
+    # Estimated insolation
+    feat["insol_est"] = feat["lum_rel"] / (feat["a_AU"] ** 2)
+
+    # Return only the columns your model was trained with.
+    # If you trained WITHOUT engineered features, drop those three here.
+    model_cols = [
+        "pl_eqt", "st_teff", "st_rad", "st_mass", "sy_dist", "pl_orbper",
+        "lum_rel", "a_AU", "insol_est",           # <-- remove these 3 if not used in training
+        "discoverymethod",
+    ]
+    return feat[model_cols]
+
 
 PRESET_WEIGHTS = {
     "Conservative HZ": {
@@ -41,6 +92,21 @@ st.set_page_config(
 st.title("Exoplanet Habitability Explorer")
 st.caption("Heuristic, explainable scoring over NASA Exoplanet Archive (PSCompPars). Not for publication—just exploration!")
 
+@st.cache_resource
+def load_model():
+    mpath = Path("models/hz_rf.pkl")
+    if mpath.exists():
+        return joblib.load(mpath)
+    return None
+
+@st.cache_data
+def load_metrics():
+    mpath = Path("models/hz_rf_metrics.json")
+    if mpath.exists():
+        import json
+        return json.load(open(mpath))
+    return {}
+
 @st.cache_data
 def load_data(pq_path: Path):
     df = pd.read_parquet(pq_path)
@@ -55,6 +121,20 @@ def load_data(pq_path: Path):
         "sy_dist": "distance_pc"
     }, inplace=True)
     return df
+
+model = load_model()
+metrics = load_metrics()
+
+def get_feature_importances(model):
+    try:
+        # After ColumnTransformer+OHE, names are expanded; dump rough importances
+        import numpy as np
+        rf = model.named_steps["clf"]
+        # No straightforward way to map back to column names cleanly without tracking OHE categories.
+        # Show top-k numeric placeholder instead:
+        return rf.feature_importances_
+    except Exception:
+        return None
 
 if not DATA_PARQUET.exists():
     st.error("No data file found. Please run: `python src/fetch_data.py --limit 500` first.")
@@ -98,6 +178,10 @@ year_min, year_max = st.sidebar.slider(
     1,
     key="disc_year_range"
 )
+
+st.sidebar.markdown("---")
+use_ml = st.sidebar.checkbox("Show ML-based label (RF)", value=bool(model))
+ml_threshold = st.sidebar.slider("ML threshold", 0.05, 0.95, 0.5, 0.05, disabled=not use_ml)
 
 with st.sidebar.expander("Scoring weights"):
     if "current_weights" not in st.session_state:
@@ -147,6 +231,23 @@ scored = compute_scores(fdf.rename(columns={
     "star_teff_K": "st_teff"
 }), weights=w)
 
+if use_ml and model is not None:
+    try:
+        feat = build_model_features(scored, df)  # df is the full dataset from load_data(...)
+        proba = model.predict_proba(feat)[:, 1]
+        scored["ml_prob"] = proba
+        scored["ml_label"] = (scored["ml_prob"] >= ml_threshold).astype(int)
+    except Exception as e:
+        st.warning(f"ML prediction failed: {e}")
+        scored["ml_prob"] = np.nan
+        scored["ml_label"] = np.nan
+        use_ml = False
+else:
+    scored["ml_prob"] = np.nan
+    scored["ml_label"] = np.nan
+
+
+
 scored.rename(columns={
     "pl_rade": "radius_Re",
     "pl_insol": "insolation_Earth=1",
@@ -179,7 +280,9 @@ with left:
         st.warning(f"'{color_col}' not available; falling back to 'score'.")
         color_col = "score" if "score" in plot_df.columns else None
 
-    hover_cols = ["name"]
+    hover_cols = ["name", "eq_temp_K", "distance_pc", "star_teff_K", "discoverymethod", "disc_year"]
+    if use_ml:
+        hover_cols = ["name", "ml_prob", "ml_label"] + hover_cols
     for col in ["eq_temp_K", "distance_pc", "star_teff_K", "discoverymethod", "disc_year"]:
         if col in plot_df.columns:
             hover_cols.append(col)
@@ -198,6 +301,22 @@ with left:
 if plot_df.empty:
     st.warning("No rows available to plot after numeric/log filtering.")
     st.stop()
+
+extra_color_opts = ["score", "eq_temp_K", "radius_Re", "distance_pc", "disc_year"]
+if use_ml:
+    extra_color_opts = ["ml_prob", "ml_label"] + extra_color_opts
+color_col = st.selectbox(
+    "Color by",
+    extra_color_opts,
+    index=0 if use_ml else 0,
+    key="color_by_main"        
+)
+
+
+if use_ml:
+    only_ml_pos = st.checkbox("Filter to ML-positive (label=1)", value=False)
+    if only_ml_pos:
+        scored = scored[scored["ml_label"] == 1]    
 
 if size_col in plot_df:
     s = plot_df[size_col]
@@ -240,6 +359,11 @@ if size_col in plot_df:
 
 with right:
     tab_details, tab_top = st.tabs(["Planet Details", "Top candidates"])
+
+    if use_ml and metrics:
+        st.markdown("**Model Metrics (held-out test)**")
+        st.write(f"ROC-AUC: {metrics.get('roc_auc', None):.3f} | PR-AUC: {metrics.get('pr_auc', None):.3f} | F1: {metrics.get('f1', None):.3f}")
+        st.caption("Label: optimistic HZ (insolation 0.35–1.5 ⨁ & radius 0.5–1.75 Re). Features: radius, insolation, eq. temp, stellar temp, distance, period, discovery method.")
 
     with tab_details:
         st.caption("Click a point on the plot to see details and score breakdown.")

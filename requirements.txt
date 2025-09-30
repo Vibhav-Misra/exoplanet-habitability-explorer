@@ -4,3 +4,6 @@ requests
 pyarrow
 plotly
 streamlit
+scikit-learn
+joblib
+pathlib
