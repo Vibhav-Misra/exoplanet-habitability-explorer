@@ -33,7 +33,7 @@ and machine-learning classification in a single, deployable web app.
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 - **Python**: `pandas`, `numpy`, `requests`, `pyarrow`
 - **Data science / ML**: `scikit-learn`, `joblib`
 - **Web app / viz**: `Streamlit`, `Plotly`, `streamlit-plotly-events`
