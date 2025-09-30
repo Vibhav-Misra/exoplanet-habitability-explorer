@@ -41,15 +41,18 @@ and machine-learning classification in a single, deployable web app.
 
 ## Typical Workflow
 ### 1. Create env & install deps
+### 1. Create env & install deps
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Pull latest data
-python src/fetch_data.py          # use --limit 500 for quick dev
+### 2. Pull latest data
+python src/fetch_data.py  
 
+### 3. (optional) Train / update ML model
 ### 3. (optional) Train / update ML model
 python src/train_classifier.py
 
+### 4. Run interactive app locally
 ### 4. Run interactive app locally
 streamlit run app.py
